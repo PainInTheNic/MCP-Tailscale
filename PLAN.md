@@ -281,7 +281,7 @@ capabilities catalog: for a tool name, reports exists / risk-gated / needs-creds
 - **Devices:** `list_devices` 📈, `get_device`, `authorize_device` (write), `deauthorize_device`
   (write), `expire_device_key` (destructive 🔒), `delete_device` (destructive 🔒), `set_device_name`
   (write), `set_device_tags` (write), `get_device_routes` (read), `set_device_routes` (write),
-  `set_device_ip` (write), `update_device_key` (write).
+  `set_device_ip` (write), `set_device_key_expiry` (write).
 - **DNS:** `get_dns_nameservers`/`set_dns_nameservers`, `get_dns_preferences`/`set` (MagicDNS),
   `get_dns_searchpaths`/`set`, split-DNS (full-replace + partial-merge).
 - **Policy (ACL):** `get_policy_file` (read 📈, +ETag), `validate_policy_file` (read),

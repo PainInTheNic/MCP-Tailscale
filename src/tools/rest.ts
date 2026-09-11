@@ -370,6 +370,32 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
     );
 
     server.registerTool(
+      "tailscale_set_device_key_expiry",
+      {
+        title: "Set device key expiry",
+        description:
+          "Enable or disable node-key expiry for a device (POST /device/{id}/key with {keyExpiryDisabled}). Disabling " +
+          "expiry keeps the node connected indefinitely without periodic re-authentication — appropriate for " +
+          "always-on infrastructure, but it means a compromised key never forces re-auth on its own. Reversible " +
+          "(re-enable any time). Read-write.",
+        inputSchema: {
+          deviceId: deviceIdSchema,
+          keyExpiryDisabled: z.boolean().describe("true = key never expires; false = restore normal periodic expiry."),
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        _meta: buildToolMeta("tailscale_set_device_key_expiry"),
+      },
+      async ({ deviceId, keyExpiryDisabled }) => {
+        try {
+          await api.post(`${device(deviceId)}/key`, { keyExpiryDisabled });
+          return textResult(`Device ${deviceId}: key expiry ${keyExpiryDisabled ? "disabled (never expires)" : "re-enabled (normal periodic expiry)"}.`);
+        } catch (e) {
+          return restFail(e);
+        }
+      },
+    );
+
+    server.registerTool(
       "tailscale_set_dns_config",
       {
         title: "Set DNS configuration",

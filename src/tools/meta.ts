@@ -47,6 +47,7 @@ const CATALOG: Descriptor[] = [
   { name: "tailscale_set_device_tags", group: "devices", backend: "api", level: "write" },
   { name: "tailscale_get_device_routes", group: "devices", backend: "api", level: "read" },
   { name: "tailscale_set_device_routes", group: "devices", backend: "api", level: "write" },
+  { name: "tailscale_set_device_key_expiry", group: "devices", backend: "api", level: "write" },
   { name: "tailscale_expire_device_key", group: "devices", backend: "api", level: "admin" },
   { name: "tailscale_delete_device", group: "devices", backend: "api", level: "admin" },
   { name: "tailscale_get_dns_config", group: "dns", backend: "api", level: "read" },
