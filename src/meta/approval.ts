@@ -5,9 +5,13 @@
  * a human before the tool runs. This is the real gate for high-impact / irreversible
  * actions — a `confirm: true` *input* is not, because the model fills its own inputs.
  *
- * The set is deliberately NARROW: irreversible tailnet writes, traffic-redirection
- * (an exit-node/route change can silently MITM all host traffic), identity changes,
- * and node logout. Keeping it small means operators don't learn to click through it.
+ * Criterion: anything that can CUT CONNECTIVITY or REMOVE ACCESS (for this host or
+ * the tailnet), redirect traffic (an exit-node/route change can silently MITM all
+ * host traffic; a webhook streams tailnet events to any URL), change identity, mint a
+ * credential or one-time secret, or cannot be undone. Routine additive / restorative
+ * edits (connect, rename a device, approve or restore a user) stay ungated, so
+ * operators don't learn to click through it. Every tool here except the two that mint
+ * a secret (create_auth_key, create_webhook — additive) is also destructiveHint:true.
  *
  * IMPORTANT: `_meta` only reaches the client when the tool is registered via
  * `server.registerTool(...)`. The legacy `server.tool(...)` API silently drops it.
@@ -17,15 +21,27 @@ export const FORCED_APPROVAL_TOOLS: ReadonlySet<string> = new Set([
   // Host — traffic-redirection / identity / connectivity-severing / key-expiring
   "tailscale_disconnect",
   "tailscale_logout",
+  "tailscale_set_prefs", // shields-up, accept-dns, ssh, hostname
   "tailscale_set_exit_node",
   "tailscale_set_routes",
   "tailscale_switch_profile",
-  // REST — irreversible tailnet writes
+  // REST — access-removing / connectivity-cutting tailnet writes (write tier)
+  "tailscale_authorize_device", // authorized=false de-authorizes
+  "tailscale_set_device_tags", // tags are the ACL identity
+  "tailscale_set_device_routes", // dropping a route cuts the subnet tailnet-wide
+  "tailscale_set_device_key_expiry", // re-enabling can expire the key at once
+  "tailscale_set_dns_config", // replaces tailnet-wide resolvers
+  "tailscale_suspend_user",
+  "tailscale_create_webhook", // mints a signing secret; sends tailnet events to a model-chosen URL
+  // REST — irreversible / tailnet-wide / credential-minting (admin tier)
   "tailscale_delete_device",
   "tailscale_expire_device_key",
+  "tailscale_create_auth_key",
   "tailscale_delete_auth_key",
   "tailscale_update_policy_file",
+  "tailscale_update_tailnet_settings",
   "tailscale_delete_webhook",
+  // Planned (PLAN.md) but not registered yet: pre-gated so it can never ship without approval.
   "tailscale_delete_user",
 ]);
 
@@ -41,9 +57,7 @@ export const LARGE_RESULT_TOOLS: ReadonlySet<string> = new Set([
   "tailscale_list_devices",
   "tailscale_list_users",
   "tailscale_get_policy_file",
-  "tailscale_diff_acl_access",
   "tailscale_get_audit_log",
-  "tailscale_get_network_flow_logs",
 ]);
 
 /**

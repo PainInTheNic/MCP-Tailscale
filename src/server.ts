@@ -1,7 +1,7 @@
 /** McpServer factory: resolve the CLI, wire host + REST backends, register tools. */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { type Config, hasApiCredentials } from "./config.js";
-import { resolveTailscaleBinary } from "./backends/host/binary-resolver.js";
+import { resolveTailscaleBinary, searchedLocations } from "./backends/host/binary-resolver.js";
 import { CliHostBackend } from "./backends/host/cli-executor.js";
 import { TailscaleService } from "./service/tailscale-service.js";
 import { TailscaleApiClient } from "./backends/api/client.js";
@@ -16,9 +16,12 @@ export function createServer(config: Config): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
   const binary = resolveTailscaleBinary(config.cliPath);
+  if (config.cliPath && binary !== config.cliPath) {
+    logger.warn("TAILSCALE_CLI_PATH does not exist; using the default search instead", { cliPath: config.cliPath });
+  }
   logger.info("resolved tailscale binary", { binary });
 
-  const host = new CliHostBackend(binary);
+  const host = new CliHostBackend(binary, { searched: searchedLocations(config.cliPath) });
   const service = new TailscaleService(host, { authKeyFile: config.authKeyFile });
 
   let apiClient: TailscaleApiClient | undefined;

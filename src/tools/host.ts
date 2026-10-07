@@ -2,7 +2,7 @@
  * P1 host-management tools (CLI-backed). Registered subject to risk level:
  *   read  — list_exit_nodes, ping, netcheck, version, whois, whoami, dns_status,
  *           get_syspolicy, list_profiles
- *   write — set_prefs, set_exit_node (🔒), set_routes (🔒), switch_profile (🔒)
+ *   write — set_prefs (🔒), set_exit_node (🔒), set_routes (🔒), switch_profile (🔒)
  *   admin — logout (🔒, destructive)
  * 🔒 = forced-approval via _meta (see meta/approval.ts).
  */
@@ -215,7 +215,9 @@ export function registerHostTools(server: McpServer, service: TailscaleService, 
         title: "Set Tailscale preferences",
         description:
           "Incrementally change one or more preferences via `tailscale set` (no connect/disconnect, no complete-flag-set " +
-          "requirement). Only benign prefs — exit-node and routes have dedicated tools. Returns the resulting status.",
+          "requirement). Exit-node and routes have dedicated tools. ⚠ Several prefs cut connectivity or access " +
+          "(shieldsUp blocks all incoming connections, acceptDns=false drops tailnet DNS, ssh=false disables Tailscale " +
+          "SSH, hostname renames this node's MagicDNS name), so this requires user approval. Returns the resulting status.",
         inputSchema: {
           acceptDns: z.boolean().optional(),
           hostname: hostnameSchema.optional(),
@@ -230,7 +232,7 @@ export function registerHostTools(server: McpServer, service: TailscaleService, 
           unattended: z.boolean().optional().describe("Windows: keep connected with no user logged in."),
         },
         outputSchema: statusShape,
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         _meta: buildToolMeta("tailscale_set_prefs"),
       },
       async (prefs) => {
@@ -256,7 +258,7 @@ export function registerHostTools(server: McpServer, service: TailscaleService, 
           allowLanAccess: z.boolean().optional().describe("Allow direct access to the local LAN while using the exit node."),
         },
         outputSchema: statusShape,
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         _meta: buildToolMeta("tailscale_set_exit_node"),
       },
       async ({ exitNode, allowLanAccess }) => {
@@ -283,7 +285,7 @@ export function registerHostTools(server: McpServer, service: TailscaleService, 
           acceptRoutes: z.boolean().optional().describe("Whether to accept subnet routes advertised by peers."),
         },
         outputSchema: statusShape,
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         _meta: buildToolMeta("tailscale_set_routes"),
       },
       async ({ advertiseRoutes, acceptRoutes }) => {
@@ -306,7 +308,7 @@ export function registerHostTools(server: McpServer, service: TailscaleService, 
           "Returns the resulting status.",
         inputSchema: { id: z.string().min(1).max(128).describe("Profile id from tailscale_list_profiles.") },
         outputSchema: statusShape,
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
         _meta: buildToolMeta("tailscale_switch_profile"),
       },
       async ({ id }) => {

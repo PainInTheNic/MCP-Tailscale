@@ -100,7 +100,8 @@ export function registerConnectTools(server: McpServer, service: TailscaleServic
         reason: z.string().max(200).optional().describe("Optional reason, only if your tailnet policy requires one."),
       },
       outputSchema: actionShape,
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      // Reversible, but it cuts connectivity (not an additive update), so it is honestly "destructive".
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
       _meta: buildToolMeta("tailscale_disconnect"),
     },
     async ({ reason }) => {

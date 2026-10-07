@@ -163,6 +163,11 @@ expires the node key → next connect needs full re-auth. Kept strictly separate
 Layered defense; the mechanical baseline already beats both reference repos, and the critiques
 closed the human-in-the-loop gaps.
 
+> **Superseded detail:** the forced-approval set (item 3) and annotations (item 8) were widened
+> after setup review — tools that can cut connectivity, remove access or mint a one-time secret
+> are now gated and annotated destructive. `src/meta/approval.ts` and the README's Tools list are
+> authoritative.
+
 1. **No shell, ever.** Every host call is `execFile(shell:false)` with an **argv array**. User
    input is never concatenated into a command line.
 2. **Per-subcommand flag allow-list** (`argv-allowlist.ts`, the sole argv chokepoint). Value-
@@ -256,6 +261,9 @@ Two independent layers, injected via the Claude config `mcpServers.tailscale.env
 token's *actual* granted scopes so an over-privileged credential is visible.
 
 ## 9. Tool inventory
+
+> Planned inventory; some tools here were cut or renamed, and 🔒 / kind differ for several that
+> shipped. The README's Tools list and `src/meta/approval.ts` are authoritative.
 
 Legend: **🔒** = forced-approval (`requiresUserInteraction`); **📈** = large-result hint; kind =
 read / write / destructive.

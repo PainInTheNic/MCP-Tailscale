@@ -3,6 +3,7 @@
  * a stable {code, message, remedy} so the agent gets an actionable next step
  * instead of a raw stderr dump.
  */
+import { MACOS_APP_CLI } from "../backends/host/binary-resolver.js";
 
 export type HostErrorCode =
   | "cli_not_found"
@@ -47,15 +48,19 @@ export function classifyCliFailure(args: {
   spawnCode?: string; // e.g. "ENOENT"
   killed?: boolean;
   binaryPath: string;
+  /** Locations searched for the binary, listed in a cli_not_found message. */
+  searched?: string[];
+  platform?: NodeJS.Platform;
 }): HostError {
   const stderr = (args.stderr ?? "").trim();
   const lower = stderr.toLowerCase();
 
   if (args.spawnCode === "ENOENT") {
+    const searched = args.searched?.length ? ` Searched: ${args.searched.join(", ")}.` : "";
     return new HostError(
       "cli_not_found",
-      `Could not find the Tailscale CLI at "${args.binaryPath}".`,
-      "Install Tailscale from https://tailscale.com/download, or set TAILSCALE_CLI_PATH to the full path of tailscale.exe.",
+      `Could not find the Tailscale CLI at "${args.binaryPath}".${searched}`,
+      `Install Tailscale from https://tailscale.com/download, or set TAILSCALE_CLI_PATH to ${cliPathHint(args.platform ?? process.platform)}.`,
       stderr || undefined,
     );
   }
@@ -122,6 +127,14 @@ export function classifyCliFailure(args: {
     "Inspect the detail, verify the node state with tailscale_status, and retry.",
     stderr || undefined,
   );
+}
+
+function cliPathHint(platform: NodeJS.Platform): string {
+  if (platform === "win32") return "the full path of tailscale.exe";
+  if (platform === "darwin") {
+    return `the Tailscale app's bundled CLI (${MACOS_APP_CLI}) or the full path of a standalone tailscale binary`;
+  }
+  return "the full path of the tailscale binary";
 }
 
 function firstLine(s: string): string {
