@@ -10,6 +10,26 @@ test("forced-approval meta only on the narrow high-impact set", () => {
   assert.equal(buildToolMeta("tailscale_connect"), undefined); // connect is NOT forced
 });
 
+test("forced approval covers connectivity-cutting / access-removing writes, not routine edits", () => {
+  for (const n of [
+    "tailscale_set_prefs",
+    "tailscale_authorize_device",
+    "tailscale_set_device_tags",
+    "tailscale_set_device_routes",
+    "tailscale_set_device_key_expiry",
+    "tailscale_set_dns_config",
+    "tailscale_suspend_user",
+    "tailscale_create_auth_key",
+    "tailscale_create_webhook",
+    "tailscale_update_tailnet_settings",
+  ]) {
+    assert.deepEqual(buildToolMeta(n), { "anthropic/requiresUserInteraction": true }, `${n} should be forced-approval`);
+  }
+  for (const n of ["tailscale_set_device_name", "tailscale_approve_user", "tailscale_restore_user"]) {
+    assert.equal(buildToolMeta(n), undefined, `${n} is a routine edit`);
+  }
+});
+
 test("large-result hint on tailnet-scaled reads", () => {
   const m = buildToolMeta("tailscale_list_devices");
   assert.equal(m?.["anthropic/maxResultSizeChars"], 500_000);

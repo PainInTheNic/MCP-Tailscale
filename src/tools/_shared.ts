@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { HostStatus } from "../backends/host/types.js";
 import { HostError } from "../util/errors.js";
-import { redact } from "../util/redact.js";
+import { redact, redactExcept, redactObject, registerSecret } from "../util/redact.js";
 import { logger } from "../logger.js";
 
 /** Output shape describing this host's connection state. */
@@ -53,9 +53,9 @@ export function toStructured(s: HostStatus): Record<string, unknown> {
   };
 }
 
-/** Success result with structured content (matches an outputSchema). */
+/** Success result with structured content (matches an outputSchema). Both parts are redacted. */
 export function ok(text: string, structured: Record<string, unknown>): CallToolResult {
-  return { content: [{ type: "text", text: redact(text) }], structuredContent: structured };
+  return { content: [{ type: "text", text: redact(text) }], structuredContent: redactObject(structured) };
 }
 
 /** Plain text result (no outputSchema). */
@@ -66,6 +66,21 @@ export function textResult(text: string): CallToolResult {
 /** Pretty-printed JSON text result (no outputSchema). */
 export function jsonResult(value: unknown): CallToolResult {
   return { content: [{ type: "text", text: redact(JSON.stringify(value, null, 2)) }] };
+}
+
+/**
+ * The deliberate exception to redaction: a secret the API returns exactly once and
+ * the user must capture (a new auth key or webhook signing secret). `secret` is
+ * shown verbatim in this result only; everything else — including the OAuth client
+ * secret, API key and minted access tokens — stays redacted. The secret is then
+ * registered, so any later echo of it (tool output, logs) is scrubbed. No `secret`
+ * → plain jsonResult.
+ */
+export function oneTimeSecretResult(warning: string, value: unknown, secret: string | undefined): CallToolResult {
+  if (!secret) return jsonResult(value);
+  const text = redactExcept(`${warning}\n\n${JSON.stringify(value, null, 2)}`, [secret]);
+  registerSecret(secret);
+  return { content: [{ type: "text", text }] };
 }
 
 /** Turn a thrown error into a non-structured error result (skips output validation). */

@@ -3,11 +3,12 @@
  * (see tools/index.ts), then further gated by risk level:
  *   read  — list/get devices, routes, dns, policy(get/validate), keys(list),
  *           settings(get), webhooks(list), users(list/get), audit log
- *   write — authorize/name/tags/routes device, dns set, webhook create,
- *           user approve/suspend/restore
+ *   write — authorize device (🔒), name device, tags (🔒) / routes (🔒) /
+ *           key expiry (🔒) device, dns set (🔒), webhook create (🔒),
+ *           user approve / suspend (🔒) / restore
  *   admin — expire/delete device (🔒), policy update (🔒, If-Match), key
- *           create / delete (🔒), settings update, webhook delete (🔒)
- * 🔒 = forced-approval via _meta.
+ *           create (🔒) / delete (🔒), settings update (🔒), webhook delete (🔒)
+ * 🔒 = forced-approval via _meta (see meta/approval.ts).
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -16,7 +17,7 @@ import { TailscaleApiClient, ApiError } from "../backends/api/client.js";
 import { buildToolMeta } from "../meta/approval.js";
 import { allows } from "../meta/risk.js";
 import { cidrArraySchema, deviceIdSchema, tagSchema } from "../validation/schemas.js";
-import { fail, jsonResult, textResult } from "./_shared.js";
+import { fail, jsonResult, oneTimeSecretResult, textResult } from "./_shared.js";
 import { redact } from "../util/redact.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
@@ -292,9 +293,11 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
       "tailscale_authorize_device",
       {
         title: "Authorize / deauthorize a device",
-        description: "Set a device's authorized flag (POST /device/{id}/authorized). Read-write.",
+        description:
+          "Set a device's authorized flag (POST /device/{id}/authorized). ⚠ authorized=false DE-AUTHORIZES the device: " +
+          "it loses tailnet access immediately. Requires user approval. Read-write.",
         inputSchema: { deviceId: deviceIdSchema, authorized: z.boolean() },
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         _meta: buildToolMeta("tailscale_authorize_device"),
       },
       async ({ deviceId, authorized }) => {
@@ -311,9 +314,10 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
       "tailscale_set_device_name",
       {
         title: "Set device name",
-        description: "Set a device's (DNS) name (POST /device/{id}/name). Read-write.",
+        description:
+          "Set a device's (DNS) name (POST /device/{id}/name). The old MagicDNS name stops resolving. Read-write.",
         inputSchema: { deviceId: deviceIdSchema, name: z.string().min(1).max(253) },
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         _meta: buildToolMeta("tailscale_set_device_name"),
       },
       async ({ deviceId, name }) => {
@@ -332,9 +336,10 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
         title: "Set device tags",
         description:
           "Replace a device's ACL tags (POST /device/{id}/tags). This REPLACES all tags — pass the full desired set. " +
-          "You must own the tags (ACL tagOwners). Read-write.",
+          "You must own the tags (ACL tagOwners). ⚠ Tags are the device's ACL identity: a change can cut its access, " +
+          "and tagging a user-owned device removes the user from it. Requires user approval. Read-write.",
         inputSchema: { deviceId: deviceIdSchema, tags: z.array(tagSchema).max(64).describe('Full tag set, e.g. ["tag:server"].') },
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         _meta: buildToolMeta("tailscale_set_device_tags"),
       },
       async ({ deviceId, tags }) => {
@@ -354,9 +359,10 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
         description:
           "Set the ENABLED subnet routes for a device (POST /device/{id}/routes). This REPLACES the full enabled set " +
           "(send the complete list). The device must already advertise a route for it to be enabled; enabling " +
-          "0.0.0.0/0 + ::/0 approves it as an exit node. Read-write.",
+          "0.0.0.0/0 + ::/0 approves it as an exit node. ⚠ Dropping a route cuts that subnet off for the whole " +
+          "tailnet. Requires user approval. Read-write.",
         inputSchema: { deviceId: deviceIdSchema, routes: cidrArraySchema.describe("Full set of CIDRs to enable; [] disables all.") },
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         _meta: buildToolMeta("tailscale_set_device_routes"),
       },
       async ({ deviceId, routes }) => {
@@ -376,13 +382,14 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
         description:
           "Enable or disable node-key expiry for a device (POST /device/{id}/key with {keyExpiryDisabled}). Disabling " +
           "expiry keeps the node connected indefinitely without periodic re-authentication — appropriate for " +
-          "always-on infrastructure, but it means a compromised key never forces re-auth on its own. Reversible " +
-          "(re-enable any time). Read-write.",
+          "always-on infrastructure, but it means a compromised key never forces re-auth on its own. ⚠ Re-enabling " +
+          "restores the ORIGINAL expiry time: if that has already passed, the key expires at once and the device drops " +
+          "off the tailnet until someone re-authenticates it. Requires user approval. Read-write.",
         inputSchema: {
           deviceId: deviceIdSchema,
           keyExpiryDisabled: z.boolean().describe("true = key never expires; false = restore normal periodic expiry."),
         },
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         _meta: buildToolMeta("tailscale_set_device_key_expiry"),
       },
       async ({ deviceId, keyExpiryDisabled }) => {
@@ -402,7 +409,9 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
         description:
           "Set part of the tailnet DNS config. section=nameservers (dns[]), preferences (magicDNS bool; needs a " +
           "nameserver set first), searchpaths (searchPaths[]), or splitdns (splitDns map; mode=merge PATCHes/removes " +
-          "with null, mode=replace PUTs the whole map). Read-write.",
+          "with null, mode=replace PUTs the whole map). ⚠ nameservers / searchpaths / splitdns-replace REPLACE the " +
+          "tailnet-wide setting; a wrong value breaks name resolution on every device that accepts tailnet DNS. " +
+          "Requires user approval. Read-write.",
         inputSchema: {
           section: z.enum(["nameservers", "preferences", "searchpaths", "splitdns"]),
           nameservers: z.array(z.string()).max(64).optional(),
@@ -411,7 +420,7 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
           splitDns: z.record(z.string(), z.union([z.array(z.string()), z.null()])).optional(),
           splitDnsMode: z.enum(["merge", "replace"]).default("merge"),
         },
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         _meta: buildToolMeta("tailscale_set_dns_config"),
       },
       async ({ section, nameservers, magicDNS, searchPaths, splitDns, splitDnsMode }) => {
@@ -451,7 +460,9 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
         description:
           "Create a webhook endpoint (POST /tailnet/{t}/webhooks). providerType is one of '', slack, mattermost, " +
           "googlechat, discord. subscriptions are event-type enums (e.g. nodeCreated, userApproved, policyUpdate). " +
-          "The signing secret is returned only once. Read-write.",
+          "⚠ Tailnet events are sent to endpointUrl from then on. The signing secret is returned ONCE, unredacted, in " +
+          "this result only (every other secret stays redacted) — relay it so the user can configure their receiver; " +
+          "this server scrubs it from all later output. Requires user approval. Read-write.",
         inputSchema: {
           endpointUrl: z.string().url().max(2048),
           providerType: z.enum(["", "slack", "mattermost", "googlechat", "discord"]).default(""),
@@ -463,7 +474,18 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
       async ({ endpointUrl, providerType, subscriptions }) => {
         try {
           const res = await api.post(api.tnet("/webhooks"), { endpointUrl, providerType, subscriptions });
-          return jsonResult(res.data);
+          // Like create_auth_key: reveal exactly the one-time signing secret (never logged), redact the rest.
+          const data = res.data as { endpointId?: unknown; secret?: unknown } | undefined;
+          const secret = typeof data?.secret === "string" ? data.secret : undefined;
+          const endpointId = typeof data?.endpointId === "string" ? data.endpointId : "(see endpointId below)";
+          return oneTimeSecretResult(
+            "⚠ ONE-TIME SECRET: the webhook signing secret (\"secret\" below) is shown in full only in this response " +
+              "and cannot be retrieved again. Relay it to the user once so they can configure their receiver to verify " +
+              "payloads; do not repeat it in later messages, files or commits. If it is exposed, delete the webhook " +
+              `with tailscale_delete_webhook (endpointId ${endpointId}) and create a new one.`,
+            res.data,
+            secret,
+          );
         } catch (e) {
           return restFail(e);
         }
@@ -479,10 +501,12 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
             op === "approve"
               ? "Approve a pending user (POST /users/{id}/approve). Read-write."
               : op === "suspend"
-                ? "Suspend a user (POST /users/{id}/suspend). Reversible with tailscale_restore_user. Read-write."
+                ? "Suspend a user (POST /users/{id}/suspend). ⚠ The user and their devices lose tailnet access until " +
+                  "restored with tailscale_restore_user. Requires user approval. Read-write."
                 : "Restore a suspended user (POST /users/{id}/restore). Read-write.",
           inputSchema: { userId: z.string().min(1).max(128) },
-          annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+          // approve/restore only grant access back; suspend removes it.
+          annotations: { readOnlyHint: false, destructiveHint: op === "suspend", idempotentHint: true, openWorldHint: true },
           _meta: buildToolMeta(`tailscale_${op}_user`),
         },
         async ({ userId }) => {
@@ -570,8 +594,10 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
       {
         title: "Create an auth key",
         description:
-          "Create a tailnet auth key (POST /tailnet/{t}/keys) for enrolling nodes. The plaintext key is returned ONCE " +
-          "in the result — capture it. Creating a key with tags requires you to own those tags. Admin.",
+          "Create a tailnet auth key (POST /tailnet/{t}/keys) for enrolling nodes. The plaintext key is returned ONCE, " +
+          "unredacted, in this result only (every other secret stays redacted) — relay it so the user can store it; " +
+          "this server scrubs it from all later output. Creating a key with tags requires you to own those tags. " +
+          "Requires user approval. Admin.",
         inputSchema: {
           reusable: z.boolean().default(false),
           ephemeral: z.boolean().default(false),
@@ -591,8 +617,18 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
           if (expirySeconds !== undefined) body.expirySeconds = expirySeconds;
           if (description !== undefined) body.description = description;
           const res = await api.post(api.tnet("/keys"), body);
-          // The result contains the one-time secret; return it to the user but do not log it.
-          return jsonResult(res.data);
+          // The response carries the one-time secret: reveal exactly that value (never logged), redact the rest.
+          const data = res.data as { id?: unknown; key?: unknown } | undefined;
+          const key = typeof data?.key === "string" ? data.key : undefined;
+          const keyId = typeof data?.id === "string" ? data.id : "(see id below)";
+          return oneTimeSecretResult(
+            "⚠ ONE-TIME SECRET: the new auth key (\"key\" below) is shown in full only in this response and cannot be " +
+              "retrieved again. Relay it to the user once so they can store it securely (password manager, or the file " +
+              "TAILSCALE_AUTH_KEY_FILE points at); do not repeat it in later messages, files or commits. If it is " +
+              `exposed, revoke it with tailscale_delete_auth_key (keyId ${keyId}).`,
+            res.data,
+            key,
+          );
         } catch (e) {
           return restFail(e);
         }
@@ -624,9 +660,10 @@ export function registerRestTools(server: McpServer, api: TailscaleApiClient, co
         title: "Update tailnet settings",
         description:
           "Partially update tailnet-wide settings (PATCH /tailnet/{t}/settings) — merge semantics. Pass only the keys to " +
-          "change (e.g. devicesApprovalOn, networkFlowLoggingOn). Admin.",
+          "change (e.g. devicesApprovalOn, networkFlowLoggingOn). ⚠ Tailnet-wide: settings such as device/user approval " +
+          "and key duration apply to every device and user. Requires user approval. Admin.",
         inputSchema: { values: z.record(z.string(), z.unknown()).describe("Object of setting keys to merge.") },
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
         _meta: buildToolMeta("tailscale_update_tailnet_settings"),
       },
       async ({ values }) => {
