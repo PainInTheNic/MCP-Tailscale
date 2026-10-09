@@ -7,6 +7,7 @@ import { TailscaleService } from "./service/tailscale-service.js";
 import { TailscaleApiClient } from "./backends/api/client.js";
 import { OAuthClientCredentialsProvider, StaticApiKeyProvider, type TokenProvider } from "./backends/api/auth.js";
 import { registerAllTools } from "./tools/index.js";
+import { EXEMPTABLE_TOOLS, setApprovalExemptions } from "./meta/approval.js";
 import { logger } from "./logger.js";
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 
@@ -38,6 +39,17 @@ export function createServer(config: Config): McpServer {
     logger.info("REST API not configured; host/CLI tools only");
   }
 
+  // Must run before registration: each tool's _meta is built when it is registered.
+  const ignored = setApprovalExemptions(config.approvalExempt);
+  if (ignored.length) {
+    logger.warn("TAILSCALE_APPROVAL_EXEMPT names tools that cannot be exempted; ignored", {
+      ignored,
+      exemptable: [...EXEMPTABLE_TOOLS],
+    });
+  }
+  if (config.approvalExempt.length > ignored.length) {
+    logger.info("forced approval exempted", { tools: config.approvalExempt.filter((n) => !ignored.includes(n)) });
+  }
   registerAllTools(server, service, config, { cliBinary: binary, apiClient });
   return server;
 }

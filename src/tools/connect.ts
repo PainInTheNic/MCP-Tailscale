@@ -5,7 +5,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { TailscaleService } from "../service/tailscale-service.js";
-import { buildToolMeta } from "../meta/approval.js";
+import { approvalClause, buildToolMeta } from "../meta/approval.js";
 import { allows } from "../meta/risk.js";
 import type { RiskLevel } from "../config.js";
 import { actionShape, fail, ok, statusShape, statusText, textResult, toStructured } from "./_shared.js";
@@ -94,8 +94,8 @@ export function registerConnectTools(server: McpServer, service: TailscaleServic
       description:
         "Disconnect this host (`tailscale down`): brings WireGuard down but STAYS LOGGED IN — fully reversible with " +
         "tailscale_connect and does NOT expire the node key (use tailscale_logout for that). Interrupts Tailscale " +
-        "connectivity for every user of this machine, so it requires user approval. action ∈ already_disconnected | " +
-        "disconnected. Success means state=stopped.",
+        `connectivity for every user of this machine, so it ${approvalClause("tailscale_disconnect")}. ` +
+        "action ∈ already_disconnected | disconnected. Success means state=stopped.",
       inputSchema: {
         reason: z.string().max(200).optional().describe("Optional reason, only if your tailnet policy requires one."),
       },

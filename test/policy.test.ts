@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildToolMeta, FORCED_APPROVAL_TOOLS, LARGE_RESULT_TOOLS } from "../src/meta/approval.js";
+import {
+  approvalClause,
+  buildToolMeta,
+  EXEMPTABLE_TOOLS,
+  FORCED_APPROVAL_TOOLS,
+  LARGE_RESULT_TOOLS,
+  requiresApproval,
+  setApprovalExemptions,
+} from "../src/meta/approval.js";
 import { allows } from "../src/meta/risk.js";
 import { loadConfig, hasApiCredentials } from "../src/config.js";
 
@@ -70,4 +78,51 @@ test("config: defaults and OAuth pair validation", () => {
 test("config: base URL must be https except loopback", () => {
   assert.throws(() => loadConfig({ TAILSCALE_API_BASE_URL: "http://evil.example.com" }), /https/);
   assert.doesNotThrow(() => loadConfig({ TAILSCALE_API_BASE_URL: "http://localhost:8080" }));
+});
+
+test("TAILSCALE_APPROVAL_EXEMPT lifts forced approval only for the named gated tools", () => {
+  try {
+    const ignored = setApprovalExemptions(["tailscale_disconnect", "tailscale_status", "not_a_tool"]);
+    assert.deepEqual(ignored, ["tailscale_status", "not_a_tool"]); // only gated tools can be exempted
+    assert.equal(requiresApproval("tailscale_disconnect"), false);
+    assert.equal(buildToolMeta("tailscale_disconnect"), undefined);
+    assert.equal(requiresApproval("tailscale_logout"), true); // everything else stays gated
+    assert.deepEqual(buildToolMeta("tailscale_set_exit_node"), { "anthropic/requiresUserInteraction": true });
+  } finally {
+    setApprovalExemptions([]);
+  }
+  assert.equal(requiresApproval("tailscale_disconnect"), true);
+});
+
+test("TAILSCALE_APPROVAL_EXEMPT can never lift the gate on tailnet-wide, irreversible or unregistered tools", () => {
+  const never = [...FORCED_APPROVAL_TOOLS].filter((n) => !EXEMPTABLE_TOOLS.has(n));
+  assert.ok(never.includes("tailscale_logout") && never.includes("tailscale_delete_user"));
+  for (const n of EXEMPTABLE_TOOLS) assert.ok(FORCED_APPROVAL_TOOLS.has(n), `${n} must be a gated tool`);
+  try {
+    assert.deepEqual(setApprovalExemptions(never), never); // every one ignored
+    for (const n of never) assert.equal(requiresApproval(n), true, n);
+  } finally {
+    setApprovalExemptions([]);
+  }
+});
+
+test("approvalClause matches the gate", () => {
+  try {
+    assert.equal(approvalClause("tailscale_disconnect"), "requires user approval");
+    setApprovalExemptions(["tailscale_disconnect"]);
+    assert.match(approvalClause("tailscale_disconnect"), /TAILSCALE_APPROVAL_EXEMPT/);
+    assert.doesNotMatch(approvalClause("tailscale_disconnect"), /^requires user approval/);
+    assert.equal(approvalClause("tailscale_set_routes"), "requires user approval");
+  } finally {
+    setApprovalExemptions([]);
+  }
+});
+
+test("loadConfig parses TAILSCALE_APPROVAL_EXEMPT as a trimmed comma list", () => {
+  assert.deepEqual(loadConfig({}).approvalExempt, []);
+  assert.deepEqual(loadConfig({ TAILSCALE_APPROVAL_EXEMPT: " , " }).approvalExempt, []);
+  assert.deepEqual(
+    loadConfig({ TAILSCALE_APPROVAL_EXEMPT: " tailscale_disconnect , tailscale_set_routes," }).approvalExempt,
+    ["tailscale_disconnect", "tailscale_set_routes"],
+  );
 });

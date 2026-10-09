@@ -4,13 +4,14 @@
  *           get_syspolicy, list_profiles
  *   write — set_prefs (🔒), set_exit_node (🔒), set_routes (🔒), switch_profile (🔒)
  *   admin — logout (🔒, destructive)
- * 🔒 = forced-approval via _meta (see meta/approval.ts).
+ * 🔒 = forced-approval via _meta (see meta/approval.ts). The write-tier 🔒 tools can be exempted with
+ * TAILSCALE_APPROVAL_EXEMPT, so their descriptions take the approval wording from approvalClause().
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { TailscaleService } from "../service/tailscale-service.js";
 import type { Config, RiskLevel } from "../config.js";
-import { buildToolMeta } from "../meta/approval.js";
+import { approvalClause, buildToolMeta } from "../meta/approval.js";
 import { allows } from "../meta/risk.js";
 import { cidrArraySchema, exitNodeSchema, hostnameSchema, ipSchema } from "../validation/schemas.js";
 import { fail, jsonResult, ok, statusShape, statusText, textResult, toStructured } from "./_shared.js";
@@ -217,7 +218,8 @@ export function registerHostTools(server: McpServer, service: TailscaleService, 
           "Incrementally change one or more preferences via `tailscale set` (no connect/disconnect, no complete-flag-set " +
           "requirement). Exit-node and routes have dedicated tools. ⚠ Several prefs cut connectivity or access " +
           "(shieldsUp blocks all incoming connections, acceptDns=false drops tailnet DNS, ssh=false disables Tailscale " +
-          "SSH, hostname renames this node's MagicDNS name), so this requires user approval. Returns the resulting status.",
+          `SSH, hostname renames this node's MagicDNS name), so this ${approvalClause("tailscale_set_prefs")}. ` +
+          "Returns the resulting status.",
         inputSchema: {
           acceptDns: z.boolean().optional(),
           hostname: hostnameSchema.optional(),
@@ -252,7 +254,7 @@ export function registerHostTools(server: McpServer, service: TailscaleService, 
         description:
           "Route this host's internet traffic through a tailnet exit node (`tailscale set --exit-node`). Pass an empty " +
           "string to CLEAR (stop using an exit node). ⚠ This redirects ALL of this host's traffic through the chosen " +
-          "node, so it requires user approval. Returns the resulting status.",
+          `node, so it ${approvalClause("tailscale_set_exit_node")}. Returns the resulting status.`,
         inputSchema: {
           exitNode: exitNodeSchema.describe('Exit node IP or MagicDNS name; "" to clear.'),
           allowLanAccess: z.boolean().optional().describe("Allow direct access to the local LAN while using the exit node."),
@@ -278,8 +280,8 @@ export function registerHostTools(server: McpServer, service: TailscaleService, 
         description:
           "Advertise subnet routes from this host and/or toggle accepting routes advertised by others " +
           "(`tailscale set --advertise-routes / --accept-routes`). Advertised subnet routes still need approval in the " +
-          "admin console. ⚠ Route changes alter connectivity, so this requires user approval. Pass an empty " +
-          "advertiseRoutes array to withdraw all advertised routes. Returns the resulting status.",
+          `admin console. ⚠ Route changes alter connectivity, so this ${approvalClause("tailscale_set_routes")}. ` +
+          "Pass an empty advertiseRoutes array to withdraw all advertised routes. Returns the resulting status.",
         inputSchema: {
           advertiseRoutes: cidrArraySchema.optional().describe("CIDRs to advertise (e.g. 10.0.0.0/24); [] withdraws all."),
           acceptRoutes: z.boolean().optional().describe("Whether to accept subnet routes advertised by peers."),
@@ -304,8 +306,8 @@ export function registerHostTools(server: McpServer, service: TailscaleService, 
         title: "Switch login profile",
         description:
           "Switch the active Tailscale account/login profile on this machine (`tailscale switch <id>`). ⚠ This changes " +
-          "which identity/tailnet controls this node, so it requires user approval. Use tailscale_list_profiles to see ids. " +
-          "Returns the resulting status.",
+          `which identity/tailnet controls this node, so it ${approvalClause("tailscale_switch_profile")}. ` +
+          "Use tailscale_list_profiles to see ids. Returns the resulting status.",
         inputSchema: { id: z.string().min(1).max(128).describe("Profile id from tailscale_list_profiles.") },
         outputSchema: statusShape,
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },

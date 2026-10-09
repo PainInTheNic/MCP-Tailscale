@@ -22,7 +22,8 @@ app's bundled CLI is found automatically) and Linux — anywhere the CLI runs.
   secrets are redacted from all output (tool text *and* `structuredContent`) bar the one-time secret
   a create call exists to return; tools that can cut connectivity, remove access, mint credentials
   or can't be undone require **client-enforced human approval**
-  (`_meta["anthropic/requiresUserInteraction"]`), not a model-supplied flag.
+  (`_meta["anthropic/requiresUserInteraction"]`), not a model-supplied flag. An operator can exempt a
+  few reversible host tools with `TAILSCALE_APPROVAL_EXEMPT`.
 - **48 tools** across three risk tiers (24 read, 16 write, 8 admin), plus MCP **resources** and
   **prompts**, and a `tailscale_server_info` capability catalog that explains why any tool is withheld.
 
@@ -119,6 +120,7 @@ Or the equivalent JSON (the `mcpServers` block of `~/.claude.json` for user scop
 | `TAILSCALE_RISK_LEVEL` | `write` | `read` (read-only), `write` (adds host and tailnet changes — several destructive and 🔒-gated), `admin` (adds irreversible or tailnet-wide tools: logout, expire/delete device, ACL update, auth keys, tailnet settings, delete webhook). |
 | `TAILSCALE_CLI_PATH` | auto | Path to the CLI. Otherwise searched in order — Windows: `C:\Program Files\Tailscale\tailscale.exe`; macOS: the Tailscale app's bundled CLI, then `/usr/bin`, `/usr/local/bin`, `/opt/homebrew/bin`; Linux: `/usr/bin`, `/usr/local/bin`, `/opt/homebrew/bin` — then `PATH`. |
 | `TAILSCALE_AUTH_KEY_FILE` | — | Path to a file holding a tailnet auth key for headless first-login (passed as `file:<path>`; never in argv). |
+| `TAILSCALE_APPROVAL_EXEMPT` | — | Comma-separated 🔒 tools that should run **without** the forced approval prompt, e.g. `tailscale_disconnect`, so a maintenance routine can reconnect a dropped link unattended. Only the reversible host tools can be exempted: `tailscale_disconnect`, `tailscale_set_prefs`, `tailscale_set_exit_node`, `tailscale_set_routes` and `tailscale_switch_profile`. Anything else (tailnet-wide REST tools, `tailscale_logout`, irreversible or unknown names) is ignored with a warning. Every other 🔒 tool stays gated; an exempted tool's description says it's exempted, and `tailscale_server_info` reports the effective gate. |
 | `TS_LOCAL_API` | `0` | Reserved for the optional LocalAPI fast path (Phase 3). |
 | `TAILSCALE_OAUTH_CLIENT_ID` / `TAILSCALE_OAUTH_CLIENT_SECRET` | — | **Preferred** REST credentials (OAuth client-credentials). Both or neither. |
 | `TAILSCALE_API_KEY` | — | Legacy static API access token (inherits the creator's full role). |
@@ -144,7 +146,8 @@ creator's full role (no scoping). `tailscale_server_info` reports what's availab
 Reads are always available; host and tailnet changes need `TAILSCALE_RISK_LEVEL=write` (several of
 them destructive and 🔒); irreversible or tailnet-wide tools need `admin`. 🔒 = requires interactive
 human approval in the host (anything that can cut connectivity, remove access, redirect traffic or
-tailnet events, mint a credential or one-time secret, or can't be undone).
+tailnet events, mint a credential or one-time secret, or can't be undone), unless the host tool is
+exempted with `TAILSCALE_APPROVAL_EXEMPT`.
 
 | Risk level | Host (CLI) + `server_info` — no credentials needed | Tailnet (REST) | Total |
 |---|---|---|---|

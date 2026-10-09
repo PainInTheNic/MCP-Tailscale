@@ -45,6 +45,49 @@ export const FORCED_APPROVAL_TOOLS: ReadonlySet<string> = new Set([
   "tailscale_delete_user",
 ]);
 
+/**
+ * The only forced-approval tools an operator may exempt: host-level changes to this machine
+ * that another call here can undo. Tailnet-wide REST writes, logout (expires the node key) and
+ * anything irreversible or not registered yet (delete_user) always keep the gate.
+ */
+export const EXEMPTABLE_TOOLS: ReadonlySet<string> = new Set([
+  "tailscale_disconnect",
+  "tailscale_set_prefs",
+  "tailscale_set_exit_node",
+  "tailscale_set_routes",
+  "tailscale_switch_profile",
+]);
+
+/**
+ * Forced-approval tools the operator has exempted (TAILSCALE_APPROVAL_EXEMPT), e.g. so a
+ * maintenance routine can toggle the connection unattended. Set once at startup, before
+ * any tool is registered; names outside EXEMPTABLE_TOOLS are ignored.
+ */
+let approvalExempt: ReadonlySet<string> = new Set();
+
+/** Set the exemptions; returns the requested names that cannot be exempted (ignored). */
+export function setApprovalExemptions(names: Iterable<string>): string[] {
+  const requested = [...names];
+  approvalExempt = new Set(requested.filter((n) => EXEMPTABLE_TOOLS.has(n)));
+  return requested.filter((n) => !EXEMPTABLE_TOOLS.has(n));
+}
+
+/** True when the host must ask a human before `toolName` runs. */
+export function requiresApproval(toolName: string): boolean {
+  return FORCED_APPROVAL_TOOLS.has(toolName) && !approvalExempt.has(toolName);
+}
+
+/**
+ * The approval clause for an exemptable tool's description ("..., so it <clause>."), so the
+ * text the model reads matches the gate. Call it at registration, like buildToolMeta.
+ */
+export function approvalClause(toolName: string): string {
+  return requiresApproval(toolName)
+    ? "requires user approval"
+    : "would normally require user approval, but TAILSCALE_APPROVAL_EXEMPT lifts that on this server, so it runs " +
+        "without a prompt";
+}
+
 /** Client-side ceiling; larger values are ignored, so this is a cap not a preference. */
 export const MAX_RESULT_SIZE_CHARS = 500_000;
 
@@ -67,7 +110,7 @@ export const LARGE_RESULT_TOOLS: ReadonlySet<string> = new Set([
  */
 export function buildToolMeta(toolName: string): Record<string, unknown> | undefined {
   const meta: Record<string, unknown> = {};
-  if (FORCED_APPROVAL_TOOLS.has(toolName)) {
+  if (requiresApproval(toolName)) {
     meta["anthropic/requiresUserInteraction"] = true;
   }
   if (LARGE_RESULT_TOOLS.has(toolName)) {

@@ -20,6 +20,7 @@ const ConfigSchema = z
     riskLevel: RiskLevelSchema.default("write"),
     localApi: z.boolean().default(false),
     authKeyFile: z.string().min(1).optional(),
+    approvalExempt: z.array(z.string().min(1)).default([]),
 
     // REST (used by P2 tools; optional so the server still starts without them)
     oauthClientId: z.string().min(1).optional(),
@@ -69,6 +70,12 @@ function trimmed(v: string | undefined): string | undefined {
   return t.length ? t : undefined;
 }
 
+/** Comma-separated list; undefined when unset or empty. */
+function list(v: string | undefined): string[] | undefined {
+  const items = (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return items.length ? items : undefined;
+}
+
 /** Parse and validate config from an env map (defaults to process.env). Throws on fatal misconfig. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const raw = {
@@ -76,6 +83,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     riskLevel: trimmed(env.TAILSCALE_RISK_LEVEL)?.toLowerCase(),
     localApi: bool(env.TS_LOCAL_API),
     authKeyFile: trimmed(env.TAILSCALE_AUTH_KEY_FILE),
+    approvalExempt: list(env.TAILSCALE_APPROVAL_EXEMPT),
     oauthClientId: trimmed(env.TAILSCALE_OAUTH_CLIENT_ID),
     oauthClientSecret: trimmed(env.TAILSCALE_OAUTH_CLIENT_SECRET),
     apiKey: trimmed(env.TAILSCALE_API_KEY),

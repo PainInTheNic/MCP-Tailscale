@@ -7,7 +7,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Config, RiskLevel } from "../config.js";
 import { hasApiCredentials } from "../config.js";
 import { allows } from "../meta/risk.js";
-import { FORCED_APPROVAL_TOOLS } from "../meta/approval.js";
+import { requiresApproval } from "../meta/approval.js";
 import { jsonResult, fail } from "./_shared.js";
 import { SERVER_NAME, SERVER_VERSION } from "../constants.js";
 
@@ -73,6 +73,8 @@ const CATALOG: Descriptor[] = [
 
 export function registerMetaTools(server: McpServer, config: Config, info: { cliBinary: string }): void {
   const apiConfigured = hasApiCredentials(config);
+  // Snapshot the gate now, as each tool's _meta is, so this report always matches what was registered.
+  const gated = new Set(CATALOG.filter((d) => requiresApproval(d.name)).map((d) => d.name));
 
   server.registerTool(
     "tailscale_server_info",
@@ -100,7 +102,7 @@ export function registerMetaTools(server: McpServer, config: Config, info: { cli
             group: d.group,
             backend: d.backend,
             requiredRiskLevel: d.level,
-            forcedApproval: FORCED_APPROVAL_TOOLS.has(d.name),
+            forcedApproval: gated.has(d.name),
             available: riskOk && credOk,
             reason,
           };
